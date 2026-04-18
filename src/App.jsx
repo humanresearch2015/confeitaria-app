@@ -225,7 +225,7 @@ export default function App() {
 
   return (
     <div style={{ padding: 20, maxWidth: 900, margin: "auto" }}>
-      <h1>🍰 Confeitaria POS</h1>
+      <h1>🍰 Controlo de Vendas</h1>
 
       <p>👤 {user.email}</p>
 
