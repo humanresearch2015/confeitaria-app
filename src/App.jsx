@@ -9,7 +9,7 @@ export default function App() {
   const [stock, setStock] = useState("");
   const [editId, setEditId] = useState(null);
 
-  // 🔐 LOGIN
+  // 🔐 AUTH
   const [user, setUser] = useState(null);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -17,12 +17,9 @@ export default function App() {
   // 🛒 CARRINHO
   const [cart, setCart] = useState([]);
 
-  // 🧾 VENDAS
+  // 📊 DADOS
   const [vendas, setVendas] = useState([]);
-
-  // 📊 RELATÓRIO
   const [report, setReport] = useState([]);
-
   const [search, setSearch] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
@@ -37,6 +34,18 @@ export default function App() {
     setUser(data.user);
   };
 
+  // 🆕 REGISTO (MULTI-VENDEDOR)
+  const signup = async () => {
+    const { error } = await supabase.auth.signUp({
+      email,
+      password,
+    });
+
+    if (error) return setErrorMsg(error.message);
+
+    alert("Conta criada! Agora faz login.");
+  };
+
   const logout = async () => {
     await supabase.auth.signOut();
     setUser(null);
@@ -44,11 +53,11 @@ export default function App() {
 
   // 👤 CHECK USER
   useEffect(() => {
-    const check = async () => {
+    const checkUser = async () => {
       const { data } = await supabase.auth.getUser();
       setUser(data.user);
     };
-    check();
+    checkUser();
   }, []);
 
   // 📦 PRODUTOS
@@ -61,19 +70,23 @@ export default function App() {
     setProdutos(data || []);
   };
 
-  // 🧾 VENDAS
+  // 🧾 VENDAS (MULTI-VENDEDOR)
   const fetchVendas = async () => {
     const { data } = await supabase
       .from("vendas")
       .select("*")
-      .order("id", { ascending: false });
+      .eq("vendedor_email", user.email)
+      .order("created_at", { ascending: false });
 
     setVendas(data || []);
   };
 
   // 📊 RELATÓRIO
   const fetchReport = async () => {
-    const { data } = await supabase.from("vendas").select("*");
+    const { data } = await supabase
+      .from("vendas")
+      .select("*")
+      .eq("vendedor_email", user.email);
 
     const grouped = {};
 
@@ -94,12 +107,14 @@ export default function App() {
   };
 
   useEffect(() => {
-    fetchProdutos();
-    fetchVendas();
-    fetchReport();
-  }, []);
+    if (user) {
+      fetchProdutos();
+      fetchVendas();
+      fetchReport();
+    }
+  }, [user]);
 
-  // ➕ ADD OU EDIT
+  // ➕ PRODUTO
   const saveProduto = async () => {
     if (editId) {
       await supabase
@@ -129,14 +144,11 @@ export default function App() {
 
   // ❌ DELETE
   const deleteProduto = async (id) => {
-    const ok = window.confirm("Eliminar produto?");
-    if (!ok) return;
-
     await supabase.from("produtos").delete().eq("id", id);
     fetchProdutos();
   };
 
-  // ✏️ EDIT START
+  // ✏️ EDIT
   const startEdit = (p) => {
     setEditId(p.id);
     setNome(p.nome);
@@ -144,7 +156,7 @@ export default function App() {
     setStock(p.stock);
   };
 
-  // 🛒 ADD CART
+  // 🛒 ADD CARRINHO
   const addToCart = (p) => {
     const existe = cart.find((c) => c.id === p.id);
 
@@ -159,7 +171,7 @@ export default function App() {
     }
   };
 
-  // 💰 VENDER
+  // 💰 VENDA
   const confirmarVenda = async () => {
     for (const item of cart) {
       await supabase.from("vendas").insert([
@@ -167,6 +179,7 @@ export default function App() {
           produto_nome: item.nome,
           quantidade: item.quantidade,
           total: item.preco * item.quantidade,
+          vendedor_email: user.email, // 👈 MULTI-VENDEDOR
           created_at: new Date(),
         },
       ]);
@@ -190,16 +203,20 @@ export default function App() {
     p.nome.toLowerCase().includes(search.toLowerCase())
   );
 
-  // LOGIN SCREEN
+  // 🔐 LOGIN SCREEN
   if (!user) {
     return (
       <div style={{ padding: 20 }}>
-        <h2>🔐 Login</h2>
+        <h2>🔐 Login / Registo</h2>
 
         <input placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} style={input} />
         <input placeholder="Password" type="password" value={password} onChange={(e) => setPassword(e.target.value)} style={input} />
 
         <button onClick={login} style={btn}>Entrar</button>
+
+        <button onClick={signup} style={{ ...btn, marginTop: 10, background: "green" }}>
+          Criar conta
+        </button>
 
         <p style={{ color: "red" }}>{errorMsg}</p>
       </div>
@@ -225,6 +242,13 @@ export default function App() {
         {editId ? "✏️ Atualizar" : "➕ Adicionar"}
       </button>
 
+      <input
+        placeholder="🔎 Procurar produto"
+        value={search}
+        onChange={(e) => setSearch(e.target.value)}
+        style={input}
+      />
+
       {/* LISTA */}
       {filtered.map((p) => (
         <div key={p.id} style={card}>
@@ -235,11 +259,8 @@ export default function App() {
             ➕ Vender
           </button>
 
-          <button onClick={() => startEdit(p)} style={{ marginLeft: 5 }}>
-            ✏️ Editar
-          </button>
-
-          <button onClick={() => deleteProduto(p.id)} style={{ marginLeft: 5, color: "red" }}>
+          <button onClick={() => startEdit(p)}>✏️ Editar</button>
+          <button onClick={() => deleteProduto(p.id)} style={{ color: "red" }}>
             ❌ Apagar
           </button>
         </div>
@@ -271,7 +292,7 @@ export default function App() {
       </button>
 
       {/* RELATÓRIO */}
-      <h2>📊 Relatório</h2>
+      <h2>📊 Meu Relatório</h2>
 
       {report.map((r, i) => (
         <div key={i} style={card}>
@@ -282,7 +303,7 @@ export default function App() {
       ))}
 
       {/* HISTÓRICO */}
-      <h2>🧾 Histórico</h2>
+      <h2>🧾 Minhas Vendas</h2>
 
       {vendas.map((v) => (
         <div key={v.id} style={card}>
